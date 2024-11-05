@@ -1,143 +1,231 @@
-// Initialize game board on page load
+document.getElementById("start-game").addEventListener('click', async() => {
+    showLoadingView(); // Show loading spinner    
+    const categories = await getCategoryIds(); // Fetch category data
+    hideLoadingView(); //Hide loading spinner and reset button text
+    await fillTable(categories); // Ensure table is filled after fetching categories
+    
+});
 
-initCatRow();
-initBoard();
+async function getCategoryCount() {
+    const res = await axios.get("https://rithm-jeopardy.herokuapp.com/api/categories?count=100");
 
-document.querySelector('button').addEventListener('click', restartGame);
+    const rawCategories = res.data;
+    
+    let categoryObjs = _.take(_.shuffle(rawCategories), 6);
+    let categoryIds = categoryObjs.map(cat => cat.id);
 
-let questionsData = [];
+    return categoryIds;
 
-// RESTART GAME
-
-function restartGame() {
-
-    clearBoard(); // Clear the category row and board
-
-    initCatRow(); // Initialize new categories and board
-    initBoard();
-
-    buildCategories(); // Load new categories and questions
+    /** Get NUM_CATEGORIES random category from API.
+ *
+ * Returns array of category ids
+ */
 
 }
 
+async function getCategoryIds() {
 
-// CREATE CATEGORY ROW
+    const categoryIds = await getCategoryCount();
+    const categories = [];
 
-function initCatRow() {
+    for (let id of categoryIds) {
 
-    let catRow = document.getElementById('category-row');
+        const res = await axios.get(`https://rithm-jeopardy.herokuapp.com/api/category?id=${id}`);
+        const data = res.data;
+        const title = data.title;
 
-    for(let i=0; i < 6; i++) {
-        let box = document.createElement('div');
-        box.className = 'clue-box category-box';   
-        catRow.appendChild(box) // for every box we create, we put it into its parent row
+        const cluesFor2 = data.clues.map(clue => { return {question: clue.question, answer: clue.answer, showing: null} });
+
+
+
+    categories.push({ title: title, clues: cluesFor2});
+    }    
+
+    return categories;
+
+
+    /** Return object with data about a category:
+ *
+ *  Returns { title: "Math", clues: clue-array }
+ *
+ * Where clue-array is:
+ *   [
+ *      {question: "Hamlet Author", answer: "Shakespeare", showing: null},
+ *      {question: "Bell Jar Author", answer: "Plath", showing: null},
+ *      ...
+ *   ]
+ */
+
+}
+
+const nums_Questions_Per_Cat = 5;
+
+function getCategory(categories) {
+
+    const thead = document.getElementById('category-row');
+    thead.innerHTML = ""; // Clear any existing content    
+
+    
+
+    // Create table header row for category titles
+    for (let category of categories) {
+        const th = document.createElement('th');
+        th.innerText = category.title;        
+        th.className = 'clue-box category-box';
+        thead.appendChild(th);
     }
 }
 
 
 
-// CREATE CLUE BOARD
 
-function initBoard() {
+/** Fill the HTML table#jeopardy with the categories & cells for questions.
+ *
+ * - The <thead> should be filled w/a <tr>, and a <td> for each category
+ * - The <tbody> should be filled w/NUM_QUESTIONS_PER_CAT <tr>s,
+ *   each with a question for each category in a <td>
+ *   (initally, just show a "?" where the question/answer would go.)
+ */
 
-    let board = document.getElementById('clue-board');
+async function fillTable(categories) {
 
-    // Generate 5 Rows, then place 6 Boxes in each row
+    getCategory(categories); // Call getCategory to populate the category row
 
-    for(let i = 0; i < 5; i++) {
-        let row = document.createElement('div');
-        let boxSign = '?';
-        row.className = 'clue-row';
+    const tbody = document.getElementById('clue-board');
+    tbody.innerHTML = ""; // Clears any existing rows
+    
 
-        for(let j=0; j < 6; j++) {
-            let box = document.createElement('div');
-            box.className = 'clue-box';
-            box.textContent = boxSign;
-            box.addEventListener('click', getClue);
-            row.appendChild(box) // for every box we create, we put it into its parent row
+    // Loop over each row of questions for specified number of questions per category
+    for (let i = 0; i < nums_Questions_Per_Cat; i++) {
+        const row = document.createElement('tr');
+        row.className = "clue-row";
+
+        for (let category of categories) {
+            const clue = category.clues[i]; // Get the current clue for this category
+
+            const td = document.createElement('td');
+            td.className = 'clue-box';
+            td.innerText = "?"; // Initial placeholder
+            td.onclick = () => handleClueClick(td, clue); // Attach click event
+
+            row.appendChild(td);
         }
-
-        board.appendChild(row);
+        tbody.appendChild(row);
     }
-
 }
-    // Clear the category row and clue board
 
-    function clearBoard() {
-        document.getElementById('category-row').innerHTML = '';
-        document.getElementById('clue-board').innerHTML = '';
+function handleClueClick(td, clue) {  // Function handles clicking on a clue
+    if (clue.showing === null) {
+        td.innerText = clue.question;
+        clue.showing = "question";
+    } else if (clue.showing === "question") {
+        td.innerText = clue.answer;
+        clue.showing = "answer";
+        td.style.backgroundColor = "green"; // Change background color when clicked on
     }
+}
 
-    // CALL API
 
 
-    async function buildCategories() {
+
+/** Handle clicking on a clue: show the question or answer.
+ *
+ * Uses .showing property on clue to determine what to show:
+ * - if currently null, show question & set .showing to "question"
+ * - if currently "question", show answer & set .showing to "answer"
+ * - if currently "answer", ignore click
+ * */
+
+function handleClick(evt) {
+
+    // Clear the current Jeopardy board
+    const tbody = document.getElementById('clue-board');
+    tbody.innerHTML = ""; // Wipes the current board content
+
+    const thead = document.getElementById('category-row');
+    thead.innerHTML = "";
+
+    // Show the laoding spinner in the board
+    const spinnerRow = document.createElement('tr');
+    const spinnerCell = document.createElement('td');
+    spinnerCell.colSpan = 6; // Span across all category columns
+    spinnerCell.className = 'loading-spinner';
+    spinnerCell.innerText = "Loading...";
+    spinnerRow.appendChild(spinnerCell);
+    tbody.appendChild(spinnerRow);
+
+    // Update button text to indicate loading
+    const startButton = document.getElementById('start-game');
+    startButton.innerText = "Loading...";
+
     
-        const url = `https://opentdb.com/api.php?amount=50&type=multiple`;
+}
 
-        const response = await axios.get(url);
-        let catArray = response.data.results.map(result => result.category);
+/** Wipe the current Jeopardy board, show the loading spinner,
+ * and update the button used to fetch data.
+ */
 
-        let uniqueCategories = [...new Set(catArray)].slice(0, 6); // Create a set to filer out duplicate categories
+function showLoadingView() {
 
-        questionsData = uniqueCategories.map(category => {  // Organize questions by category
-            
-                    let questions = response.data.results
-                    .filter(result => result.category === category)
-                    .map(result => ({
-                        question: result.question,
-                        correct_answer: result.correct_answer
-                    }));
-                
-                // Ensure each category has 5 questions
-                while (questions.length < 5) {
-                    questions.push({ question: "No question available", correct_answer: ""});
-                }
+    // find the loading spinner in the clue board and remove it
+    const tbody = document.getElementById('clue-board');
+    tbody.innerHTML = ""; // Clear the board content
 
-                return { category, questions };
-            
-        });
+    // Create and display the loading spinner
+    const spinnerRow = document.createElement('tr');
+    const spinnerCell = document.createElement('td');
+    spinnerCell.colSpan = 6; // Span across all category columns
+    spinnerCell.className = 'loading-spinner';
+    spinnerCell.innerText = "Loading...";
+    spinnerRow.appendChild(spinnerCell);
+    tbody.appendChild(spinnerRow);
 
-
-        setCategories(uniqueCategories);
+    const startButton = document.getElementById('start-game'); // Fix undefined reference
+    startButton.innerText = "Loading...";
 
 }
 
-    function setCategories(catArray) {
+/** Remove the loading spinner and update the button used to fetch data. */
 
-        let element = document.getElementById('category-row');
-        let children = element.children;
+function hideLoadingView() {
 
-        for(let i = 0; i < 6; i++) {
-            children[i].innerHTML = catArray[i] || "Category " + (i + 1); // Fallback in case of missing data
-        }        
-}
-
-
-    // Display CLUE or ANSWER in the CLICKED BOX
-
-    function getClue(event) {
-
-    const box = event.target;
-
-    // Get the row and column index from the box's parent (clue row) and it position
-    const rowElement = box.parentElement
-
-    const rowIndex = Array.from(rowElement.parentElement.children).indexOf(rowElement);
-    const colIndex = Array.from(rowElement.children).indexOf(box);
-
-    const currentCategory = questionsData[colIndex];
-
-    if (!currentCategory) return; // just in case there's an invalid index or no category data
+    // Find and remove the loading spinner in the clue board
+    const tbody = document.getElementById('clue-board');
+    tbody.innerHTML = ""; // Clears the loading Spinner
     
-    const question = currentCategory.questions[rowIndex];
-
-    if(box.textContent === '?') {
-
-        box.textContent = question.question; // show the question text if box displays '?'
-
-    } else if(box.textContent === question.question) {
-
-        box.textContent = question.correct_answer;
-    }
+    // Reset the Start Game button text
+    const startButton = document.getElementById('start-game');
+    startButton.innerText = "Start Game";
 }
+
+/** Start game:
+ *
+ * - get random category Ids
+ * - get data for each category
+ * - create HTML table
+ * */
+
+async function setupAndStart() {
+
+    // Clear the current Jeoaprdy board and show loading spinner
+    showLoadingView();
+
+    // Fetch new category data
+    const categories = await getCategoryIds();
+
+    // Hide laoding spinner once data is fetched
+    hideLoadingView();
+
+    // Fill the table with the new categories and clues
+    await fillTable(categories);
+
+    
+}
+
+/** On click of start / restart button, set up game. */
+
+// TODO
+
+/** On page load, add event handler for clicking clues */
+
+// TODO
